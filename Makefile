@@ -1,6 +1,13 @@
-run:
-	go run cmd/main/main.go
+BUILD_DIR := ./bin
 
+build:
+	@echo "Building application..."
+	@mkdir -p $(BUILD_DIR)
+	go build -o $(BUILD_DIR)/app cmd/main/main.go
+
+run: build
+	@echo "Starting application..."
+	@$(BUILD_DIR)/app
 TEST_PKGS := $(shell go list ./... | \
     grep -v /mocks)
 
@@ -14,3 +21,5 @@ test: run_tests
 	@go tool cover -func=coverage.out
 	@go tool cover -html=coverage.out -o=coverage.html
 	@echo "==> Done! Check coverage.html file!"
+
+.PHONY: build run test
