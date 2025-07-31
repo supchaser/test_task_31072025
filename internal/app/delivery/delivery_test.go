@@ -159,7 +159,7 @@ func TestTaskDelivery_GetTask(t *testing.T) {
 	}
 }
 
-func TestTaskDelivery_AddObject(t *testing.T) {
+func TestTaskDelivery_AddObjects(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -170,56 +170,135 @@ func TestTaskDelivery_AddObject(t *testing.T) {
 		name           string
 		taskID         string
 		requestBody    any
-		mockSetup      func()
+		mockSetup      func(*mock_app.MockTaskUsecase)
 		expectedStatus int
+		expectedResult *models.MultiAddResult
 	}{
 		{
-			name:   "Success",
+			name:   "SuccessSingleURL",
 			taskID: "1",
-			requestBody: map[string]string{
-				"url": "http://example.com/image.jpg",
+			requestBody: map[string][]string{
+				"urls": {"http://example.com/image.jpg"},
 			},
-			mockSetup: func() {
-				mockUsecase.EXPECT().
+			mockSetup: func(m *mock_app.MockTaskUsecase) {
+				m.EXPECT().
 					AddObject(gomock.Any(), int64(1), "http://example.com/image.jpg").
-					Return(&models.Task{ID: 1}, nil)
+					Return(&models.Task{ID: 1, Objects: []*models.Object{{URL: "http://example.com/image.jpg"}}}, nil)
+				m.EXPECT().
+					GetTask(gomock.Any(), int64(1)).
+					Return(&models.Task{ID: 1, Objects: []*models.Object{{URL: "http://example.com/image.jpg"}}}, nil)
 			},
 			expectedStatus: http.StatusOK,
+			expectedResult: &models.MultiAddResult{
+				AddedCount:   1,
+				FailedURLs:   map[string]string{},
+				TotalObjects: 1,
+			},
+		},
+		{
+			name:   "SuccessMultipleURLs",
+			taskID: "1",
+			requestBody: map[string][]string{
+				"urls": {
+					"http://example.com/image1.jpg",
+					"http://example.com/image2.jpg",
+				},
+			},
+			mockSetup: func(m *mock_app.MockTaskUsecase) {
+				m.EXPECT().
+					AddObject(gomock.Any(), int64(1), "http://example.com/image1.jpg").
+					Return(&models.Task{ID: 1}, nil)
+				m.EXPECT().
+					AddObject(gomock.Any(), int64(1), "http://example.com/image2.jpg").
+					Return(&models.Task{ID: 1}, nil)
+				m.EXPECT().
+					GetTask(gomock.Any(), int64(1)).
+					Return(&models.Task{
+						ID: 1,
+						Objects: []*models.Object{
+							{URL: "http://example.com/image1.jpg"},
+							{URL: "http://example.com/image2.jpg"},
+						},
+					}, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedResult: &models.MultiAddResult{
+				AddedCount:   2,
+				FailedURLs:   map[string]string{},
+				TotalObjects: 2,
+			},
 		},
 		{
 			name:   "InvalidTaskID",
 			taskID: "invalid",
-			requestBody: map[string]string{
-				"url": "http://example.com/image.jpg",
+			requestBody: map[string][]string{
+				"urls": {"http://example.com/image.jpg"},
 			},
-			mockSetup:      func() {},
+			mockSetup:      func(m *mock_app.MockTaskUsecase) {},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "InvalidRequestBody_InvalidJSON",
 			taskID:         "1",
 			requestBody:    "invalid json",
-			mockSetup:      func() {},
+			mockSetup:      func(m *mock_app.MockTaskUsecase) {},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:   "TaskNotFound",
 			taskID: "1",
-			requestBody: map[string]string{
-				"url": "http://example.com/image.jpg",
+			requestBody: map[string][]string{
+				"urls": {"http://example.com/image.jpg"},
 			},
-			mockSetup: func() {
-				mockUsecase.EXPECT().
+			mockSetup: func(m *mock_app.MockTaskUsecase) {
+				m.EXPECT().
 					AddObject(gomock.Any(), int64(1), "http://example.com/image.jpg").
+					Return(nil, errs.ErrTaskNotFound)
+				m.EXPECT().
+					GetTask(gomock.Any(), int64(1)).
 					Return(nil, errs.ErrTaskNotFound)
 			},
 			expectedStatus: http.StatusNotFound,
+		},
+		{
+			name:   "PartialSuccessWithFailures",
+			taskID: "1",
+			requestBody: map[string][]string{
+				"urls": {
+					"http://example.com/good.jpg",
+					"http://example.com/bad.jpg",
+				},
+			},
+			mockSetup: func(m *mock_app.MockTaskUsecase) {
+				m.EXPECT().
+					AddObject(gomock.Any(), int64(1), "http://example.com/good.jpg").
+					Return(&models.Task{ID: 1}, nil)
+				m.EXPECT().
+					AddObject(gomock.Any(), int64(1), "http://example.com/bad.jpg").
+					Return(nil, errs.ErrInvalidFileType)
+				m.EXPECT().
+					GetTask(gomock.Any(), int64(1)).
+					Return(&models.Task{
+						ID: 1,
+						Objects: []*models.Object{
+							{URL: "http://example.com/good.jpg"},
+						},
+					}, nil)
+			},
+			expectedStatus: http.StatusOK,
+			expectedResult: &models.MultiAddResult{
+				AddedCount: 1,
+				FailedURLs: map[string]string{
+					"http://example.com/bad.jpg": "invalid file type (allowed: .pdf, .jpeg)",
+				},
+				TotalObjects: 1,
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.mockSetup()
+			tt.mockSetup(mockUsecase)
 
 			var body []byte
 			switch v := tt.requestBody.(type) {
@@ -231,7 +310,7 @@ func TestTaskDelivery_AddObject(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			req := httptest.NewRequest("POST", "/tasks/"+tt.taskID+"/add", bytes.NewBuffer(body))
+			req := httptest.NewRequest("POST", "/tasks/"+tt.taskID+"/objects", bytes.NewBuffer(body))
 			w := httptest.NewRecorder()
 
 			vars := map[string]string{
@@ -239,15 +318,22 @@ func TestTaskDelivery_AddObject(t *testing.T) {
 			}
 			req = mux.SetURLVars(req, vars)
 
-			taskDelivery.AddObject(w, req)
+			taskDelivery.AddObjects(w, req)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 
 			if tt.expectedStatus == http.StatusOK {
-				var task models.Task
-				err := json.Unmarshal(w.Body.Bytes(), &task)
+				var result models.MultiAddResult
+				err := json.Unmarshal(w.Body.Bytes(), &result)
 				assert.NoError(t, err)
-				assert.Equal(t, int64(1), task.ID)
+				assert.Equal(t, tt.expectedResult.AddedCount, result.AddedCount)
+				assert.Equal(t, tt.expectedResult.TotalObjects, result.TotalObjects)
+				assert.Equal(t, len(tt.expectedResult.FailedURLs), len(result.FailedURLs))
+
+				for url, errMsg := range tt.expectedResult.FailedURLs {
+					assert.Contains(t, result.FailedURLs, url)
+					assert.Equal(t, errMsg, result.FailedURLs[url])
+				}
 			}
 		})
 	}
@@ -440,7 +526,7 @@ func TestTaskDelivery_GetAllTasks(t *testing.T) {
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 
-			var response map[string]interface{}
+			var response map[string]any
 			err := json.Unmarshal(w.Body.Bytes(), &response)
 			assert.NoError(t, err)
 

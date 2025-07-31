@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -69,14 +71,21 @@ func TestGetTask_NotFound(t *testing.T) {
 }
 
 func TestAddObject_Success(t *testing.T) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer testServer.Close()
+
 	repo := CreateTaskRepository(5)
 	createdTask, err := repo.CreateTask(context.Background())
 	assert.NoError(t, err)
-	validURL := "http://example.com/image.jpg"
+
+	validURL := testServer.URL + "/image.jpg"
 
 	task, err := repo.AddObject(context.Background(), createdTask.ID, validURL)
 
 	assert.NoError(t, err)
+	assert.NotNil(t, task)
 	assert.Equal(t, 1, len(task.Objects))
 	assert.Equal(t, validURL, task.Objects[0].URL)
 	assert.True(t, task.Objects[0].ID > 0)

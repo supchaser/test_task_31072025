@@ -44,7 +44,7 @@
 - Ответ:
 ```
 {
-	"ID": 1753949838650814456,
+	"ID": {id},
 	"Status": "waiting",
 	"Objects": [],
 	"CreatedAt": "2025-07-31T11:17:18.650814493+03:00"
@@ -54,37 +54,60 @@
 2. Добавление объекта в задачу
 
 - `POST /api/v1/tasks/{id}/objects`
-- Тело запроса:
+- Тело запроса (максимум три объекта):
 ```
 {
-	"url": "https://in-new.ru/public/documents/test.pdf"
-}
-```
-
-Также можно добавлять файлы формата jpg и jpeg, тестовое тело запроса для этих форматов:
-```
-{
-	"url": "https://samplelib.com/lib/preview/jpeg/sample-clouds-400x300.jpg"
+    "urls": [
+        "https://samplelib.com/lib/preview/jpeg/sample-clouds-400x300.jpg",
+        "https://in-new.ru/public/documents/test.pdf",
+        "https://abc-profmed.ru/g/s3/lp/lpc.v4/file/TestPDF.pdf"
+    ]
 }
 ```
 
 - Ответ:
 ```
 {
-	"ID": {id},
-	"Status": "waiting",
-	"Objects": [
-		{
-			"ID": {id},
-			"URL": "https://in-new.ru/public/documents/test.pdf",
-			"Error": ""
-		}
-	],
-	"CreatedAt": "2025-07-31T11:21:17.930180385+03:00"
+	"added_count": 3,
+	"failed_urls": {},
+	"total_objects": 3
 }
 ```
 
-1. Получить все задачи
+- Если задача уже содержит три объекта, то получим такой ответ:
+```
+{
+	"added_count": 0,
+	"failed_urls": {
+		"https://example.com/test.pdf": "maximum objects per task reached"
+	},
+	"total_objects": 3
+}
+```
+
+- Если объект недоступен по данной ссылке:
+
+Пример тела запроса:
+```
+{
+    "urls": [
+        "https://example.com/test.pdf"
+    ]
+}
+```
+
+Ответ:
+```
+{
+	"added_count": 0,
+	"failed_urls": {
+		"https://example.com/test.pdf": "file is unavailable"
+	},
+	"total_objects": 0
+}
+```
+
+3. Получить все задачи
 
 - `GET /api/v1/tasks`
 - Ответ:
@@ -165,3 +188,23 @@
 	"text": "archive not ready"
 }
 ```
+
+### Настройка окружения
+
+**Пример файла .env:**
+
+```.env
+LOG_MODE="dev"
+SERVER_PORT="8080"
+MAX_ACTIVE_TASKS="3"
+```
+
+### Некоторые команды по работе с проектом
+
+`make run` - запуск программы
+`make test` - запуск тестов
+``
+### Тестирование
+
+- ~70% покрытия юнит тестами;
+- для тестирования использовался инструмент `gomock`.

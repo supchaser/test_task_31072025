@@ -25,7 +25,7 @@ type Object struct {
 }
 
 type Request struct {
-	URL string `json:"url"`
+	URLs []string `json:"urls"`
 }
 
 type TaskResponse struct {
@@ -33,4 +33,10 @@ type TaskResponse struct {
 	Status       TaskStatus `json:"status"`
 	CreatedAt    time.Time  `json:"created_at"`
 	ObjectsCount int        `json:"objects_count"`
+}
+
+type MultiAddResult struct {
+	AddedCount   int               `json:"added_count"`
+	FailedURLs   map[string]string `json:"failed_urls"`
+	TotalObjects int               `json:"total_objects"`
 }

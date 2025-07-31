@@ -60,7 +60,7 @@ func main() {
 	taskRouter.HandleFunc("", taskDelivery.CreateTask).Methods("POST")
 	taskRouter.HandleFunc("", taskDelivery.GetAllTasks).Methods("GET")
 	taskRouter.HandleFunc("/{id:[0-9]+}", taskDelivery.GetTask).Methods("GET")
-	taskRouter.HandleFunc("/{id:[0-9]+}/objects", taskDelivery.AddObject).Methods("POST")
+	taskRouter.HandleFunc("/{id:[0-9]+}/objects", taskDelivery.AddObjects).Methods("POST")
 	taskRouter.HandleFunc("/{id:[0-9]+}/archive", taskDelivery.DownloadArchive).Methods("GET")
 	taskRouter.HandleFunc("/{id:[0-9]+}/status", taskDelivery.GetTaskStatus).Methods("GET")
 

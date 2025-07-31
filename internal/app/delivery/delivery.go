@@ -1,12 +1,15 @@
 package delivery
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/supchaser/test_task/internal/app"
@@ -15,6 +18,7 @@ import (
 	"github.com/supchaser/test_task/internal/utils/logger"
 	"github.com/supchaser/test_task/internal/utils/responses"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 type TaskDelivery struct {
@@ -72,58 +76,81 @@ func (d *TaskDelivery) GetTask(w http.ResponseWriter, r *http.Request) {
 	responses.DoJSONResponse(w, task, http.StatusOK)
 }
 
-func (d *TaskDelivery) AddObject(w http.ResponseWriter, r *http.Request) {
-	const funcName = "TaskDelivery.AddObject"
-	logger.Debug("adding object to task",
+func (d *TaskDelivery) AddObjects(w http.ResponseWriter, r *http.Request) {
+	const funcName = "TaskDelivery.AddObjects"
+	logger.Debug("adding multiple objects to task",
 		zap.String("function", funcName),
 	)
 
 	vars := mux.Vars(r)
-	rawID := vars["id"]
-	logger.Debug("raw task ID from URL",
-		zap.String("raw_id", rawID),
-	)
-
-	taskID, err := strconv.ParseInt(rawID, 10, 64)
+	taskID, err := strconv.ParseInt(vars["id"], 10, 64)
 	if err != nil {
-		logger.Error("failed to parse task ID",
-			zap.String("raw_id", rawID),
-			zap.Error(err),
-		)
 		responses.DoBadResponseAndLog(w, http.StatusBadRequest, "invalid task id")
 		return
 	}
 
-	logger.Debug("parsed task ID",
-		zap.Int64("task_id", taskID),
-	)
-
-	req := &models.Request{}
+	req := models.Request{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		logger.Error("failed to decode request body",
-			zap.Error(err),
-		)
 		responses.DoBadResponseAndLog(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	logger.Debug("adding object",
-		zap.Int64("task_id", taskID),
-		zap.String("url", req.URL),
-	)
+	if len(req.URLs) > 3 {
+		responses.DoBadResponseAndLog(w, http.StatusBadRequest, "maximum 3 urls per request")
+		return
+	}
 
-	task, err := d.taskUsecase.AddObject(r.Context(), taskID, req.URL)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	result := &models.MultiAddResult{
+		AddedCount:   0,
+		FailedURLs:   make(map[string]string),
+		TotalObjects: 0,
+	}
+
+	mu := sync.Mutex{}
+	g, ctx := errgroup.WithContext(ctx)
+	for _, url := range req.URLs {
+		g.Go(func() error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			_, err := d.taskUsecase.AddObject(ctx, taskID, url)
+
+			mu.Lock()
+			defer mu.Unlock()
+
+			if err != nil {
+				result.FailedURLs[url] = err.Error()
+				logger.Warn("failed to add object",
+					zap.String("url", url),
+					zap.Error(err),
+				)
+			} else {
+				result.AddedCount++
+			}
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		responses.DoBadResponseAndLog(w, http.StatusInternalServerError, "processing error")
+		return
+	}
+
+	task, err := d.taskUsecase.GetTask(r.Context(), taskID)
 	if err != nil {
-		logger.Error("failed to add object",
-			zap.Int64("task_id", taskID),
-			zap.String("url", req.URL),
-			zap.Error(err),
-		)
 		responses.ResponseErrorAndLog(w, err, funcName)
 		return
 	}
 
-	responses.DoJSONResponse(w, task, http.StatusOK)
+	result.TotalObjects = len(task.Objects)
+	responses.DoJSONResponse(w, result, http.StatusOK)
 }
 
 func (d *TaskDelivery) GetTaskStatus(w http.ResponseWriter, r *http.Request) {
