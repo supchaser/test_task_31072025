@@ -22,4 +22,8 @@ test: run_tests
 	@go tool cover -html=coverage.out -o=coverage.html
 	@echo "==> Done! Check coverage.html file!"
 
-.PHONY: build run test
+clean:
+	@echo "==> Cleaning up..."
+	@rm -rf $(BUILD_DIR)
+
+.PHONY: build run test clean
