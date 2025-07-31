@@ -94,6 +94,12 @@ func ResponseErrorAndLog(w http.ResponseWriter, err error, funcName string) {
 			zap.String("error", err.Error()),
 		)
 
+	case errors.Is(err, errs.ErrFileUnavailable):
+		DoBadResponseAndLog(w, http.StatusBadRequest, "file is unavailable")
+		logger.Warn(funcName,
+			zap.String("error", err.Error()),
+		)
+
 	default:
 		DoBadResponseAndLog(w, http.StatusInternalServerError, "internal error")
 		logger.Error(funcName,

@@ -7,4 +7,5 @@ var (
 	ErrMaxTasksReached   = errors.New("server is busy (max tasks limit)")
 	ErrMaxObjectsReached = errors.New("maximum objects per task reached")
 	ErrInvalidFileType   = errors.New("invalid file type (allowed: .pdf, .jpeg)")
+	ErrFileUnavailable   = errors.New("file is unavailable")
 )

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -136,6 +137,28 @@ func (r *TaskRepository) AddObject(ctx context.Context, taskID int64, url string
 			zap.Error(err),
 		)
 		return nil, err
+	}
+
+	resp, err := http.Head(url)
+	if err != nil {
+		logger.Warn("file unavailable",
+			zap.String("function", funcName),
+			zap.Int64("task_id", taskID),
+			zap.String("url", url),
+			zap.Error(err),
+		)
+		return nil, errs.ErrFileUnavailable
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Warn("file unavailable - invalid status code",
+			zap.String("function", funcName),
+			zap.Int64("task_id", taskID),
+			zap.String("url", url),
+			zap.Int("status_code", resp.StatusCode),
+		)
+		return nil, errs.ErrFileUnavailable
 	}
 
 	object := &models.Object{
