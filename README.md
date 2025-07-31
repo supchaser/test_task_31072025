@@ -49,7 +49,7 @@
 - Ответ:
 ```.json
 {
-	"ID": {id},
+	"ID": {{id}},
 	"Status": "waiting",
 	"Objects": [],
 	"CreatedAt": "2025-07-31T11:17:18.650814493+03:00"
