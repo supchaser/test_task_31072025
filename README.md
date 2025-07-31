@@ -47,7 +47,7 @@
 
 - `POST /api/v1/tasks`
 - Ответ:
-```
+```.json
 {
 	"ID": {id},
 	"Status": "waiting",
